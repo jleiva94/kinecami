@@ -469,3 +469,123 @@
   .panel-sidebar { display: none; }
   .semana-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── Agenda Completa ────────────────────────────────────────────────────── */
+
+.agenda-leyenda {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 12px 0 20px;
+  flex-wrap: wrap;
+}
+
+.leyenda-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--charcoal);
+}
+
+.leyenda-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Vista diaria con columnas */
+.agenda-completa-dia {
+  background: white;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--light-gray);
+  overflow: hidden;
+}
+
+.agenda-col-header-row {
+  display: grid;
+  grid-template-columns: 60px repeat(var(--n-kines, 2), 1fr);
+  background: var(--cream);
+  border-bottom: 1.5px solid var(--light-gray);
+}
+
+.agenda-hora-spacer {
+  padding: 12px 8px;
+  border-right: 1px solid var(--light-gray);
+}
+
+.agenda-col-header {
+  padding: 12px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--charcoal);
+  border-top: 3px solid;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-right: 1px solid var(--light-gray);
+}
+
+.agenda-col-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.agenda-hora-fila {
+  display: grid;
+  grid-template-columns: 60px repeat(var(--n-kines, 2), 1fr);
+  border-bottom: 1px solid var(--cream);
+  min-height: 56px;
+}
+
+.agenda-hora-fila:last-child { border-bottom: none; }
+
+.agenda-hora-label {
+  padding: 10px 8px;
+  font-size: 0.8rem;
+  color: var(--mid-gray);
+  font-weight: 500;
+  border-right: 1px solid var(--light-gray);
+  display: flex;
+  align-items: flex-start;
+  padding-top: 12px;
+}
+
+.agenda-col-celda {
+  padding: 6px 8px;
+  border-right: 1px solid var(--light-gray);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agenda-col-celda:last-child { border-right: none; }
+
+.agenda-cita-bloque {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-left: 3px solid;
+  background: var(--cream);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agenda-cita-bloque:hover {
+  background: var(--light-gray);
+  transform: translateX(2px);
+}
+
+.agenda-cita-nombre {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--charcoal);
+}
+
+.agenda-celda-vacia {
+  flex: 1;
+  min-height: 40px;
+}
