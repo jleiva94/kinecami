@@ -23,6 +23,7 @@ export default function PanelKine({ session }) {
   const [toast, setToast] = useState(null)
   const [perfil, setPerfil] = useState(null)
   const [filtroEstado, setFiltroEstado] = useState('todos')
+  const [sidebarAbierto, setSidebarAbierto] = useState(false)
 
   // Paleta de colores por kinesiólogo (se asigna por índice)
   const KINE_COLORES = ['#4F7153', '#C0714F', '#5B6BBA', '#7A9E7E']
@@ -116,7 +117,13 @@ export default function PanelKine({ session }) {
     <div className="panel-wrapper">
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-      <aside className="panel-sidebar">
+      {/* Overlay mobile */}
+      <div
+        className={`sidebar-overlay ${sidebarAbierto ? 'visible' : ''}`}
+        onClick={() => setSidebarAbierto(false)}
+      />
+
+      <aside className={`panel-sidebar ${sidebarAbierto ? 'open' : ''}`}>
         <div className="sidebar-logo">K</div>
         <div className="sidebar-perfil">
           <div className="sidebar-avatar">{perfil?.nombre?.charAt(0) || '?'}</div>
@@ -128,19 +135,19 @@ export default function PanelKine({ session }) {
 
         <nav className="sidebar-nav">
           <button className={`nav-item ${seccion === 'citas' ? 'active' : ''}`}
-            onClick={() => setSeccion('citas')}>
+            onClick={() => { setSeccion('citas'); setSidebarAbierto(false) }}>
             <span>📅</span> Agenda Personal
           </button>
           <button className={`nav-item ${seccion === 'agenda' ? 'active' : ''}`}
-            onClick={() => setSeccion('agenda')}>
+            onClick={() => { setSeccion('agenda'); setSidebarAbierto(false) }}>
             <span>👥</span> Agenda Completa
           </button>
           <button className={`nav-item ${seccion === 'historial' ? 'active' : ''}`}
-            onClick={() => setSeccion('historial')}>
+            onClick={() => { setSeccion('historial'); setSidebarAbierto(false) }}>
             <span>🗂️</span> Historial Pacientes
           </button>
           <button className={`nav-item ${seccion === 'bloqueos' ? 'active' : ''}`}
-            onClick={() => setSeccion('bloqueos')}>
+            onClick={() => { setSeccion('bloqueos'); setSidebarAbierto(false) }}>
             <span>🚫</span> Mis Bloqueos
           </button>
         </nav>
@@ -160,6 +167,16 @@ export default function PanelKine({ session }) {
       </aside>
 
       <main className="panel-main">
+        {/* Barra mobile con hamburguesa */}
+        <div className="mobile-topbar">
+          <button className="menu-hamburguesa" onClick={() => setSidebarAbierto(true)}>☰</button>
+          <span className="mobile-topbar-title">
+            {seccion === 'citas' ? 'Agenda Personal'
+              : seccion === 'agenda' ? 'Agenda Completa'
+              : seccion === 'historial' ? 'Historial Pacientes'
+              : 'Mis Bloqueos'}
+          </span>
+        </div>
         {seccion === 'bloqueos' && perfil && (
           <GestionBloqueos perfil={perfil} onBack={() => setSeccion('citas')} />
         )}
