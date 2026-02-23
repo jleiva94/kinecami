@@ -235,7 +235,7 @@ export default function AgendarCita() {
       {/* Header */}
       <header className="agendar-header">
         <div className="header-inner">
-          <div className="logo-mark">KineStrong</div>
+          <div className="logo-mark">KS</div>
           <div>
             <h1 className="clinic-name">KineStrong</h1>
             <p className="clinic-sub">Reserva tu hora en línea</p>
