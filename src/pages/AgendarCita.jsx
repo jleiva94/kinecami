@@ -64,6 +64,7 @@ export default function AgendarCita() {
   const [kineSeleccionado, setKineSeleccionado] = useState(null)
   const [kinesiólogos, setKinesiólogos] = useState([])
   const [ocupacion, setOcupacion] = useState({}) // { "HH:MM": count }
+  const [bloqueosPorKine, setBloqueosPorKine] = useState([]) // bloqueos del día
   const [cargandoSlots, setCargandoSlots] = useState(false)
   const [formPaciente, setFormPaciente] = useState({
     nombre: '', telefono: '', email: '', rut: ''
@@ -84,32 +85,61 @@ export default function AgendarCita() {
     getKinesiólogos().then(setKinesiólogos).catch(console.error)
   }, [])
 
-  // Cargar ocupación al cambiar fecha
+  // Cargar ocupación Y bloqueos al cambiar fecha
   useEffect(() => {
     if (!fechaSeleccionada) return
     setCargandoSlots(true)
     const fechaStr = format(fechaSeleccionada, 'yyyy-MM-dd')
-    supabase
-      .from('citas')
-      .select('hora_inicio, estado')
-      .eq('fecha', fechaStr)
-      .not('estado', 'in', '("rechazada","cancelada")')
-      .then(({ data }) => {
-        // Para cada cita existente, marcar todos los slots que solapa
-        const occ = {}
-        ;(data || []).forEach(c => {
-          slotsSolapados(c.hora_inicio).forEach(s => {
-            occ[s] = (occ[s] || 0) + 1
-          })
+
+    Promise.all([
+      supabase
+        .from('citas')
+        .select('hora_inicio, estado')
+        .eq('fecha', fechaStr)
+        .not('estado', 'in', '("rechazada","cancelada")'),
+      supabase
+        .from('bloqueos')
+        .select('kinesiologo_id, tipo, hora_inicio, hora_fin')
+        .eq('fecha', fechaStr)
+    ]).then(([citasRes, bloqueosRes]) => {
+      // Ocupación por solapamiento de citas
+      const occ = {}
+      ;(citasRes.data || []).forEach(c => {
+        slotsSolapados(c.hora_inicio).forEach(s => {
+          occ[s] = (occ[s] || 0) + 1
         })
-        setOcupacion(occ)
-        setCargandoSlots(false)
       })
+      setOcupacion(occ)
+      setBloqueosPorKine(bloqueosRes.data || [])
+      setCargandoSlots(false)
+    })
   }, [fechaSeleccionada])
 
+  // Cuántos kinesiólogos están bloqueados en un slot dado
+  const kinesBloqueadosEnSlot = (slot) => {
+    const slotMins = toMins(slot)
+    const slotFinMins = slotMins + 60
+    const kinesBloqueados = new Set()
+
+    bloqueosPorKine.forEach(b => {
+      if (b.tipo === 'dia_completo') {
+        kinesBloqueados.add(b.kinesiologo_id)
+      } else if (b.tipo === 'rango_horas' && b.hora_inicio && b.hora_fin) {
+        const bInicio = toMins(b.hora_inicio.substring(0, 5))
+        const bFin = toMins(b.hora_fin.substring(0, 5))
+        // El slot solapa con el bloqueo si hay intersección
+        if (slotMins < bFin && slotFinMins > bInicio) {
+          kinesBloqueados.add(b.kinesiologo_id)
+        }
+      }
+    })
+    return kinesBloqueados.size
+  }
+
   // Determina si un slot está disponible considerando:
-  // 1. Capacidad (max 2 citas solapadas)
-  // 2. Anticipación mínima de 4 horas
+  // 1. Anticipación mínima de 4 horas
+  // 2. Capacidad (max 2 citas solapadas)
+  // 3. Bloqueos: si los N kinesiólogos están todos bloqueados, no hay cupos
   const slotDisponible = (slot) => {
     const fechaStr = format(fechaSeleccionada, 'yyyy-MM-dd')
     const esHoy = fechaStr === format(ahora, 'yyyy-MM-dd')
@@ -120,7 +150,18 @@ export default function AgendarCita() {
       if (slotMins - ahoraMins < 4 * 60) return false
     }
 
-    return (ocupacion[slot] || 0) < 2
+    const citasEnSlot = ocupacion[slot] || 0
+    const totalKines = kinesiólogos.length || 2
+    const bloqueados = kinesBloqueadosEnSlot(slot)
+    const kinesDisponibles = totalKines - bloqueados
+
+    // No hay cupo si: ya hay 2 citas O no quedan kinesiólogos libres
+    if (citasEnSlot >= 2) return false
+    if (kinesDisponibles <= 0) return false
+    // Si solo queda 1 kine libre y ya hay 1 cita, no hay más cupos
+    if (kinesDisponibles <= citasEnSlot) return false
+
+    return true
   }
 
   const horariosDelDia = fechaSeleccionada
