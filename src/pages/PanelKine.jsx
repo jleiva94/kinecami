@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isToday, isSunday } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { supabase, getCitasRango, actualizarCita, ESTADOS, TIPOS_ATENCION } from '../lib/supabase'
+import GestionBloqueos from './GestionBloqueos'
 import './PanelKine.css'
 
 const Toast = ({ msg, type, onClose }) => {
@@ -11,6 +12,7 @@ const Toast = ({ msg, type, onClose }) => {
 
 export default function PanelKine({ session }) {
   const [vista, setVista] = useState('dia') // 'dia' | 'semana'
+  const [seccion, setSeccion] = useState('citas') // 'citas' | 'bloqueos'
   const [fechaActual, setFechaActual] = useState(new Date())
   const [citas, setCitas] = useState([])
   const [cargando, setCargando] = useState(false)
@@ -118,16 +120,22 @@ export default function PanelKine({ session }) {
 
         <nav className="sidebar-nav">
           <button
-            className={`nav-item ${vista === 'dia' ? 'active' : ''}`}
-            onClick={() => setVista('dia')}
+            className={`nav-item ${seccion === 'citas' && vista === 'dia' ? 'active' : ''}`}
+            onClick={() => { setSeccion('citas'); setVista('dia') }}
           >
             <span>📅</span> Vista Diaria
           </button>
           <button
-            className={`nav-item ${vista === 'semana' ? 'active' : ''}`}
-            onClick={() => setVista('semana')}
+            className={`nav-item ${seccion === 'citas' && vista === 'semana' ? 'active' : ''}`}
+            onClick={() => { setSeccion('citas'); setVista('semana') }}
           >
             <span>📆</span> Vista Semanal
+          </button>
+          <button
+            className={`nav-item ${seccion === 'bloqueos' ? 'active' : ''}`}
+            onClick={() => setSeccion('bloqueos')}
+          >
+            <span>🚫</span> Mis Bloqueos
           </button>
         </nav>
 
@@ -149,6 +157,13 @@ export default function PanelKine({ session }) {
 
       {/* Main */}
       <main className="panel-main">
+        {/* Vista de bloqueos */}
+        {seccion === 'bloqueos' && perfil && (
+          <GestionBloqueos perfil={perfil} onBack={() => setSeccion('citas')} />
+        )}
+
+        {/* Vista de citas */}
+        {seccion === 'citas' && (<>
         {/* Top bar */}
         <div className="panel-topbar">
           <div className="nav-fecha">
@@ -204,6 +219,8 @@ export default function PanelKine({ session }) {
             )}
           </>
         )}
+        {/* fin seccion citas */}
+        </>)}
       </main>
 
       {/* Modal detalle */}
