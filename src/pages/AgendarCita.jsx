@@ -237,7 +237,7 @@ export default function AgendarCita() {
         <div className="header-inner">
           <div className="logo-mark">K</div>
           <div>
-            <h1 className="clinic-name">Clínica de Kinesiología</h1>
+            <h1 className="clinic-name">KineStrong</h1>
             <p className="clinic-sub">Reserva tu hora en línea</p>
           </div>
         </div>
