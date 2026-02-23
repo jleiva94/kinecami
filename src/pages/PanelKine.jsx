@@ -11,7 +11,7 @@ const Toast = ({ msg, type, onClose }) => {
 }
 
 export default function PanelKine({ session }) {
-  const [vista, setVista] = useState('dia')
+  const [vista, setVista] = useState('semana')
   const [seccion, setSeccion] = useState('citas') // 'citas' | 'agenda' | 'bloqueos'
   const [fechaActual, setFechaActual] = useState(new Date())
   const [citas, setCitas] = useState([])
@@ -40,15 +40,10 @@ export default function PanelKine({ session }) {
   const cargarCitas = useCallback(async () => {
     setCargando(true)
     try {
-      let inicio, fin
-      if (vista === 'dia') {
-        inicio = fin = format(fechaActual, 'yyyy-MM-dd')
-      } else {
-        const semanaInicio = startOfWeek(fechaActual, { weekStartsOn: 1 })
-        const semanaFin = endOfWeek(fechaActual, { weekStartsOn: 1 })
-        inicio = format(semanaInicio, 'yyyy-MM-dd')
-        fin = format(semanaFin, 'yyyy-MM-dd')
-      }
+      const semanaInicio = startOfWeek(fechaActual, { weekStartsOn: 1 })
+      const semanaFin = endOfWeek(fechaActual, { weekStartsOn: 1 })
+      const inicio = format(semanaInicio, 'yyyy-MM-dd')
+      const fin = format(semanaFin, 'yyyy-MM-dd')
 
       const [misCitas, agenda] = await Promise.all([
         supabase
@@ -76,7 +71,7 @@ export default function PanelKine({ session }) {
     } finally {
       setCargando(false)
     }
-  }, [vista, fechaActual])
+  }, [fechaActual])
 
   useEffect(() => { cargarCitas() }, [cargarCitas])
 
@@ -131,13 +126,9 @@ export default function PanelKine({ session }) {
         </div>
 
         <nav className="sidebar-nav">
-          <button className={`nav-item ${seccion === 'citas' && vista === 'dia' ? 'active' : ''}`}
-            onClick={() => { setSeccion('citas'); setVista('dia') }}>
-            <span>📅</span> Vista Diaria
-          </button>
-          <button className={`nav-item ${seccion === 'citas' && vista === 'semana' ? 'active' : ''}`}
-            onClick={() => { setSeccion('citas'); setVista('semana') }}>
-            <span>📆</span> Vista Semanal
+          <button className={`nav-item ${seccion === 'citas' ? 'active' : ''}`}
+            onClick={() => setSeccion('citas')}>
+            <span>📅</span> Agenda Personal
           </button>
           <button className={`nav-item ${seccion === 'agenda' ? 'active' : ''}`}
             onClick={() => setSeccion('agenda')}>
@@ -174,14 +165,12 @@ export default function PanelKine({ session }) {
             kinesiólogos={kinesiólogos}
             colores={KINE_COLORES}
             fechaActual={fechaActual}
-            vista={vista}
             diasSemana={diasSemana}
             cargando={cargando}
             onVerDetalle={setCitaDetalle}
-            onFechaAnterior={() => setFechaActual(d => vista === 'dia' ? subDays(d, 1) : subDays(d, 7))}
-            onFechaSiguiente={() => setFechaActual(d => vista === 'dia' ? addDays(d, 1) : addDays(d, 7))}
+            onFechaAnterior={() => setFechaActual(d => subDays(d, 7))}
+            onFechaSiguiente={() => setFechaActual(d => addDays(d, 7))}
             onHoy={() => setFechaActual(new Date())}
-            onVista={setVista}
           />
         )}
 
@@ -189,13 +178,11 @@ export default function PanelKine({ session }) {
           <>
             <div className="panel-topbar">
               <div className="nav-fecha">
-                <button className="nav-fecha-btn" onClick={() => setFechaActual(d => vista === 'dia' ? subDays(d, 1) : subDays(d, 7))}>‹</button>
+                <button className="nav-fecha-btn" onClick={() => setFechaActual(d => subDays(d, 7))}>‹</button>
                 <h2 className="fecha-titulo">
-                  {vista === 'dia'
-                    ? format(fechaActual, "EEEE d 'de' MMMM, yyyy", { locale: es })
-                    : `Semana del ${format(startOfWeek(fechaActual, { weekStartsOn: 1 }), "d 'de' MMMM", { locale: es })}`}
+                  Semana del {format(startOfWeek(fechaActual, { weekStartsOn: 1 }), "d 'de' MMMM", { locale: es })}
                 </h2>
-                <button className="nav-fecha-btn" onClick={() => setFechaActual(d => vista === 'dia' ? addDays(d, 1) : addDays(d, 7))}>›</button>
+                <button className="nav-fecha-btn" onClick={() => setFechaActual(d => addDays(d, 7))}>›</button>
               </div>
               <button className="btn btn-secondary btn-sm" onClick={() => setFechaActual(new Date())}>Hoy</button>
             </div>
@@ -216,9 +203,7 @@ export default function PanelKine({ session }) {
 
             {cargando
               ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="spinner" /></div>
-              : vista === 'dia'
-                ? <CitasListaDia citas={citasFiltradas} onVerDetalle={setCitaDetalle} />
-                : <CitasSemana  citas={citasFiltradas} dias={diasSemana} onVerDetalle={setCitaDetalle} />
+              : <CitasSemana citas={citasFiltradas} dias={diasSemana} onVerDetalle={setCitaDetalle} />
             }
           </>
         )}
@@ -439,38 +424,24 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
 
 // ── Agenda Completa ──────────────────────────────────────────────────────────
 
-function AgendaCompleta({ citas, kinesiólogos, colores, fechaActual, vista, diasSemana, cargando, onVerDetalle, onFechaAnterior, onFechaSiguiente, onHoy, onVista }) {
+function AgendaCompleta({ citas, kinesiólogos, colores, fechaActual, diasSemana, cargando, onVerDetalle, onFechaAnterior, onFechaSiguiente, onHoy }) {
 
   const colorKine = (kineId) => {
     const idx = kinesiólogos.findIndex(k => k.id === kineId)
     return colores[idx] || '#9CA3AF'
   }
 
-  // Agrupar por hora para vista diaria
-  const horasConCitas = {}
-  citas.forEach(c => {
-    if (!horasConCitas[c.hora_inicio]) horasConCitas[c.hora_inicio] = []
-    horasConCitas[c.hora_inicio].push(c)
-  })
-
   return (
     <div>
-      {/* Topbar igual que citas */}
       <div className="panel-topbar">
         <div className="nav-fecha">
           <button className="nav-fecha-btn" onClick={onFechaAnterior}>‹</button>
           <h2 className="fecha-titulo">
-            {vista === 'dia'
-              ? format(fechaActual, "EEEE d 'de' MMMM, yyyy", { locale: es })
-              : `Semana del ${format(startOfWeek(fechaActual, { weekStartsOn: 1 }), "d 'de' MMMM", { locale: es })}`}
+            Semana del {format(startOfWeek(fechaActual, { weekStartsOn: 1 }), "d 'de' MMMM", { locale: es })}
           </h2>
           <button className="nav-fecha-btn" onClick={onFechaSiguiente}>›</button>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className={`btn btn-sm ${vista === 'dia' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => onVista('dia')}>Día</button>
-          <button className={`btn btn-sm ${vista === 'semana' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => onVista('semana')}>Semana</button>
-          <button className="btn btn-secondary btn-sm" onClick={onHoy}>Hoy</button>
-        </div>
+        <button className="btn btn-secondary btn-sm" onClick={onHoy}>Hoy</button>
       </div>
 
       {/* Leyenda de colores */}
@@ -491,55 +462,7 @@ function AgendaCompleta({ citas, kinesiólogos, colores, fechaActual, vista, dia
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
           <div className="spinner" />
         </div>
-      ) : vista === 'dia' ? (
-        // Vista diaria — columnas por kinesiólogo
-        <div className="agenda-completa-dia">
-          {/* Header columnas */}
-          <div className="agenda-col-header-row">
-            <div className="agenda-hora-spacer" />
-            {kinesiólogos.map((k, i) => (
-              <div key={k.id} className="agenda-col-header" style={{ borderTopColor: colores[i] }}>
-                <span className="agenda-col-dot" style={{ background: colores[i] }} />
-                {k.nombre}
-              </div>
-            ))}
-          </div>
-
-          {/* Filas por hora */}
-          {Object.keys(horasConCitas).length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon">📋</div>
-              <p>No hay citas para este día</p>
-            </div>
-          ) : (
-            Object.keys(horasConCitas).sort().map(hora => (
-              <div key={hora} className="agenda-hora-fila">
-                <div className="agenda-hora-label">{hora.substring(0,5)}</div>
-                {kinesiólogos.map((k, i) => {
-                  const citasKine = horasConCitas[hora].filter(c => c.kinesiologo_id === k.id)
-                  return (
-                    <div key={k.id} className="agenda-col-celda">
-                      {citasKine.map(c => (
-                        <div
-                          key={c.id}
-                          className="agenda-cita-bloque"
-                          style={{ borderLeftColor: colores[i] }}
-                          onClick={() => onVerDetalle(c)}
-                        >
-                          <span className="agenda-cita-nombre">{c.paciente_nombre}</span>
-                          <span className={`badge badge-${c.estado}`}>{ESTADOS[c.estado]?.label}</span>
-                        </div>
-                      ))}
-                      {citasKine.length === 0 && <div className="agenda-celda-vacia" />}
-                    </div>
-                  )
-                })}
-              </div>
-            ))
-          )}
-        </div>
       ) : (
-        // Vista semanal — grid de días con todas las citas coloreadas
         <div className="semana-grid">
           {diasSemana.map(dia => {
             const diaStr = format(dia, 'yyyy-MM-dd')
