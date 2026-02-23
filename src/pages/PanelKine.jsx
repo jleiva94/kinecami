@@ -74,14 +74,6 @@ export default function PanelKine({ session }) {
 
   const handleLogout = () => supabase.auth.signOut()
 
-  const enviarWhatsApp = async (telefono, mensaje) => {
-    // CallMeBot: el paciente debe haber activado su API key
-    // En producción, usar una Edge Function de Supabase para no exponer keys
-    const num = telefono.replace(/[^0-9]/g, '')
-    const url = `https://api.callmebot.com/whatsapp.php?phone=${num}&text=${encodeURIComponent(mensaje)}&apikey=APIKEY`
-    try { await fetch(url) } catch {}
-  }
-
   const actualizarEstado = async (cita, nuevoEstado, datos = {}) => {
     try {
       const updated = await actualizarCita(cita.id, {
@@ -89,25 +81,6 @@ export default function PanelKine({ session }) {
         kinesiologo_id: perfil?.id,
         ...datos
       })
-
-      // Notificar por WhatsApp
-      if (cita.paciente_telefono) {
-        let msg = ''
-        const fecha = format(new Date(cita.fecha + 'T12:00:00'), "EEEE d 'de' MMMM", { locale: es })
-        const hora = cita.hora_inicio.substring(0, 5)
-
-        if (nuevoEstado === 'confirmada') {
-          const tipo = datos.tipo_atencion ? TIPOS_ATENCION[datos.tipo_atencion].label : ''
-          msg = `✅ Hola ${cita.paciente_nombre}, tu cita de kinesiología fue CONFIRMADA.\n📅 ${fecha} a las ${hora} hs.\n${tipo ? `🏥 Tipo: ${tipo}\n` : ''}${datos.notas_kinesiologo ? `📝 Notas: ${datos.notas_kinesiologo}` : ''}\nKinesióloga: ${perfil?.nombre || ''}`
-        } else if (nuevoEstado === 'rechazada') {
-          msg = `❌ Hola ${cita.paciente_nombre}, lamentablemente no podemos confirmar tu cita para el ${fecha} a las ${hora} hs.\n${datos.notas_kinesiologo ? `Motivo: ${datos.notas_kinesiologo}\n` : ''}Por favor agenda nuevamente en otro horario.`
-        } else if (nuevoEstado === 'completada') {
-          msg = `🎉 Gracias ${cita.paciente_nombre} por tu visita hoy. ¡Esperamos que te hayas sentido bien!\n${datos.notas_kinesiologo ? `Notas de tu sesión: ${datos.notas_kinesiologo}` : ''}`
-        }
-
-        if (msg) enviarWhatsApp(cita.paciente_telefono, msg)
-      }
-
       setCitas(prev => prev.map(c => c.id === cita.id ? { ...c, ...updated } : c))
       setCitaDetalle(null)
       setToast({ msg: `Cita ${ESTADOS[nuevoEstado].label.toLowerCase()} correctamente`, type: 'success' })
@@ -339,6 +312,30 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
     setProcesando(false)
   }
 
+  // Genera link de WhatsApp con mensaje pre-escrito según contexto
+  const whatsappLink = (tipo) => {
+    const num = cita.paciente_telefono?.replace(/[^0-9]/g, '')
+    if (!num) return '#'
+    const fecha = format(new Date(cita.fecha + 'T12:00:00'), "EEEE d 'de' MMMM", { locale: es })
+    const hora = cita.hora_inicio?.substring(0, 5)
+    const horaFin = String(parseInt(cita.hora_inicio) + 1).padStart(2, '0') + ':00'
+    const tipoLabel = tipoAtencion ? TIPOS_ATENCION[tipoAtencion]?.label : ''
+
+    let msg = ''
+    if (tipo === 'confirmar') {
+      msg = `Hola ${cita.paciente_nombre} 👋, te confirmo tu cita de kinesiología para el ${fecha} entre las ${hora} y ${horaFin} hrs.${tipoLabel ? ` Tu atención será en: ${tipoLabel}.` : ''} ¡Te esperamos! 🌿`
+    } else if (tipo === 'rechazar') {
+      msg = `Hola ${cita.paciente_nombre}, lamentablemente no podemos confirmar tu solicitud para el ${fecha} a las ${hora} hrs. Te pido disculpas, puedes agendar nuevamente en otro horario disponible.`
+    } else if (tipo === 'recordatorio') {
+      msg = `Hola ${cita.paciente_nombre} 👋, te recuerdo tu cita de kinesiología mañana ${fecha} a las ${hora} hrs. ¡Hasta entonces! 🌿`
+    } else if (tipo === 'completada') {
+      msg = `Hola ${cita.paciente_nombre}, fue un gusto atenderte hoy. Recuerda seguir las indicaciones de tu tratamiento. ¡Cualquier consulta me avisas! 💪`
+    } else {
+      msg = `Hola ${cita.paciente_nombre}, te contacto por tu cita del ${fecha} a las ${hora} hrs.`
+    }
+    return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()}>
@@ -363,10 +360,8 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
               <strong>{cita.fecha} — {cita.hora_inicio?.substring(0,5)} a {String(parseInt(cita.hora_inicio)+1).padStart(2,'0')}:00</strong>
             </div>
             <div className="detalle-item">
-              <span className="detalle-label">WhatsApp</span>
-              <a href={`https://wa.me/${cita.paciente_telefono?.replace(/[^0-9]/g,'')}`} target="_blank" rel="noreferrer">
-                +{cita.paciente_telefono}
-              </a>
+              <span className="detalle-label">Teléfono</span>
+              <span>+{cita.paciente_telefono}</span>
             </div>
             {cita.paciente_email && (
               <div className="detalle-item">
@@ -382,10 +377,41 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
             )}
             {cita.motivo_consulta && (
               <div className="detalle-item full">
-                <span className="detalle-label">Motivo</span>
+                <span className="detalle-label">Motivo de consulta</span>
                 <p>{cita.motivo_consulta}</p>
               </div>
             )}
+          </div>
+
+          {/* Botones WhatsApp con mensajes pre-escritos */}
+          <div className="whatsapp-section">
+            <p className="whatsapp-section-title">📱 Contactar por WhatsApp</p>
+            <div className="whatsapp-btns">
+              {cita.estado === 'pendiente' && (
+                <>
+                  <a className="btn-wa btn-wa-confirm" href={whatsappLink('confirmar')} target="_blank" rel="noreferrer">
+                    ✅ Enviar confirmación
+                  </a>
+                  <a className="btn-wa btn-wa-reject" href={whatsappLink('rechazar')} target="_blank" rel="noreferrer">
+                    ❌ Enviar rechazo
+                  </a>
+                </>
+              )}
+              {cita.estado === 'confirmada' && (
+                <>
+                  <a className="btn-wa btn-wa-reminder" href={whatsappLink('recordatorio')} target="_blank" rel="noreferrer">
+                    🔔 Enviar recordatorio
+                  </a>
+                  <a className="btn-wa btn-wa-complete" href={whatsappLink('completada')} target="_blank" rel="noreferrer">
+                    🎉 Mensaje post-sesión
+                  </a>
+                </>
+              )}
+              <a className="btn-wa btn-wa-free" href={whatsappLink('libre')} target="_blank" rel="noreferrer">
+                💬 Abrir chat (mensaje libre)
+              </a>
+            </div>
+            <p className="whatsapp-hint">Se abrirá WhatsApp con el mensaje listo para enviar. Puedes editarlo antes.</p>
           </div>
 
           {/* Tipo de atención */}
@@ -400,26 +426,27 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
 
           {/* Notas */}
           <div className="form-group">
-            <label className="form-label">Notas / Observaciones</label>
+            <label className="form-label">Notas / Observaciones internas</label>
             <textarea
               className="form-textarea"
-              placeholder="Agrega tus observaciones clínicas, indicaciones, o motivo de rechazo..."
+              placeholder="Observaciones clínicas, indicaciones, motivo de rechazo..."
               value={notas}
               onChange={e => setNotas(e.target.value)}
-              rows={4}
+              rows={3}
             />
           </div>
         </div>
 
-        {/* Acciones */}
+        {/* Acciones de estado */}
         <div className="modal-acciones">
+          <p className="acciones-label">Actualizar estado en el sistema:</p>
           {cita.estado === 'pendiente' && (
             <>
               <button className="btn btn-primary" onClick={() => handleAccion('confirmada')} disabled={procesando}>
-                ✓ Confirmar cita
+                ✓ Marcar como confirmada
               </button>
               <button className="btn btn-danger" onClick={() => handleAccion('rechazada')} disabled={procesando}>
-                ✕ Rechazar
+                ✕ Marcar como rechazada
               </button>
             </>
           )}
