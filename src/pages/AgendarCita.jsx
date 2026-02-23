@@ -3,11 +3,9 @@ import { format, addDays, startOfToday, isSunday } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   supabase,
-  getHorariosDisponibles,
   verificarDisponibilidad,
   agendarCita,
   getKinesiólogos,
-  getCitasRango
 } from '../lib/supabase'
 import './AgendarCita.css'
 
@@ -18,63 +16,135 @@ const Toast = ({ msg, type, onClose }) => {
 
 const PASOS = ['Fecha & Hora', 'Kinesiólogo', 'Tus Datos', 'Confirmar']
 
+// ── Genera slots cada 30 min según día ──────────────────────────────────────
+const getHorarios = (fechaStr) => {
+  const dia = new Date(fechaStr + 'T12:00:00').getDay() // 0=Dom,6=Sab
+  if (dia === 0) return []
+
+  const [inicioH, finH] = dia === 6 ? [9, 15] : [6, 22]
+  const slots = []
+
+  for (let h = inicioH; h < finH; h++) {
+    slots.push(`${String(h).padStart(2, '0')}:00`)
+    // slot :30 solo si la cita completa (1h) termina antes del cierre
+    if (h + 1 < finH) {
+      slots.push(`${String(h).padStart(2, '0')}:30`)
+    }
+  }
+  return slots
+}
+
+// Dado un slot "HH:MM", devuelve todos los slots que colisionan con él
+// (los que comparten al menos 1 minuto de la ventana de 1 hora)
+const slotsSolapados = (slot) => {
+  const [h, m] = slot.split(':').map(Number)
+  const inicioMin = h * 60 + m
+  const finMin = inicioMin + 60
+
+  // Un slot existente "s" ocupa [s, s+60). Hay solapamiento si s < finMin && s+60 > inicioMin
+  // Equivale a: s ∈ (inicioMin-60, finMin)  →  s ∈ [inicioMin-30, inicioMin+30] para slots de 30 en 30
+  const solapados = []
+  for (let delta = -30; delta <= 30; delta += 30) {
+    const mins = inicioMin + delta
+    if (mins < 0) continue
+    const hh = Math.floor(mins / 60)
+    const mm = mins % 60
+    solapados.push(`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`)
+  }
+  return solapados
+}
+
+// Convierte "HH:MM" a minutos desde medianoche
+const toMins = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
+
 export default function AgendarCita() {
   const [paso, setPaso] = useState(0)
   const [fechaSeleccionada, setFechaSeleccionada] = useState(null)
   const [horaSeleccionada, setHoraSeleccionada] = useState(null)
   const [kineSeleccionado, setKineSeleccionado] = useState(null)
   const [kinesiólogos, setKinesiólogos] = useState([])
-  const [slotsOcupados, setSlotsOcupados] = useState({})
+  const [ocupacion, setOcupacion] = useState({}) // { "HH:MM": count }
   const [cargandoSlots, setCargandoSlots] = useState(false)
   const [formPaciente, setFormPaciente] = useState({
-    nombre: '', telefono: '', email: '', rut: '', motivo: ''
+    nombre: '', telefono: '', email: '', rut: ''
   })
   const [enviando, setEnviando] = useState(false)
   const [citaCreada, setCitaCreada] = useState(null)
   const [toast, setToast] = useState(null)
 
+  const ahora = new Date()
   const hoy = startOfToday()
-  // Generar próximos 30 días (sin domingos)
-  const diasDisponibles = Array.from({ length: 35 }, (_, i) => addDays(hoy, i + 1))
+
+  // Próximos 14 días hábiles (sin domingos)
+  const diasDisponibles = Array.from({ length: 20 }, (_, i) => addDays(hoy, i))
     .filter(d => !isSunday(d))
-    .slice(0, 30)
+    .slice(0, 14)
 
   useEffect(() => {
     getKinesiólogos().then(setKinesiólogos).catch(console.error)
   }, [])
 
-  // Cuando cambia la fecha, cargar ocupación
+  // Cargar ocupación al cambiar fecha
   useEffect(() => {
     if (!fechaSeleccionada) return
     setCargandoSlots(true)
     const fechaStr = format(fechaSeleccionada, 'yyyy-MM-dd')
     supabase
       .from('citas')
-      .select('hora_inicio, tipo_atencion, estado')
+      .select('hora_inicio, estado')
       .eq('fecha', fechaStr)
       .not('estado', 'in', '("rechazada","cancelada")')
       .then(({ data }) => {
-        const ocupacion = {}
+        // Para cada cita existente, marcar todos los slots que solapa
+        const occ = {}
         ;(data || []).forEach(c => {
-          if (!ocupacion[c.hora_inicio]) ocupacion[c.hora_inicio] = 0
-          ocupacion[c.hora_inicio]++
+          slotsSolapados(c.hora_inicio).forEach(s => {
+            occ[s] = (occ[s] || 0) + 1
+          })
         })
-        setSlotsOcupados(ocupacion)
+        setOcupacion(occ)
         setCargandoSlots(false)
       })
   }, [fechaSeleccionada])
 
+  // Determina si un slot está disponible considerando:
+  // 1. Capacidad (max 2 citas solapadas)
+  // 2. Anticipación mínima de 4 horas
+  const slotDisponible = (slot) => {
+    const fechaStr = format(fechaSeleccionada, 'yyyy-MM-dd')
+    const esHoy = fechaStr === format(ahora, 'yyyy-MM-dd')
+
+    if (esHoy) {
+      const slotMins = toMins(slot)
+      const ahoraMins = ahora.getHours() * 60 + ahora.getMinutes()
+      if (slotMins - ahoraMins < 4 * 60) return false
+    }
+
+    return (ocupacion[slot] || 0) < 2
+  }
+
   const horariosDelDia = fechaSeleccionada
-    ? getHorariosDisponibles(format(fechaSeleccionada, 'yyyy-MM-dd'))
+    ? getHorarios(format(fechaSeleccionada, 'yyyy-MM-dd'))
     : []
 
-  const slotDisponible = (hora) => (slotsOcupados[hora] || 0) < 2
+  // Validaciones del formulario
+  const handleNombreChange = (e) => {
+    // Solo letras, espacios, tildes y ñ
+    const val = e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '')
+    setFormPaciente(p => ({ ...p, nombre: val }))
+  }
+
+  const handleTelefonoChange = (e) => {
+    // Solo dígitos, máximo 9
+    const val = e.target.value.replace(/\D/g, '').slice(0, 9)
+    setFormPaciente(p => ({ ...p, telefono: val }))
+  }
 
   const handleAgendar = async () => {
     setEnviando(true)
     try {
       const fechaStr = format(fechaSeleccionada, 'yyyy-MM-dd')
-      
+
       // Verificar disponibilidad en tiempo real
       const { disponible } = await verificarDisponibilidad(fechaStr, horaSeleccionada)
       if (!disponible) {
@@ -87,10 +157,10 @@ export default function AgendarCita() {
 
       const cita = await agendarCita({
         paciente_nombre: formPaciente.nombre.trim(),
-        paciente_telefono: formPaciente.telefono.trim(),
+        paciente_telefono: '56' + formPaciente.telefono.trim(),
         paciente_email: formPaciente.email.trim() || null,
         paciente_rut: formPaciente.rut.trim() || null,
-        motivo_consulta: formPaciente.motivo.trim() || null,
+        motivo_consulta: null,
         fecha: fechaStr,
         hora_inicio: horaSeleccionada,
         kinesiologo_id: kineSeleccionado?.id || null,
@@ -103,6 +173,14 @@ export default function AgendarCita() {
     } finally {
       setEnviando(false)
     }
+  }
+
+  // Calcular hora de término (slot + 1h)
+  const horaTermino = (slot) => {
+    if (!slot) return ''
+    const [h, m] = slot.split(':').map(Number)
+    const finMins = h * 60 + m + 60
+    return `${String(Math.floor(finMins / 60)).padStart(2, '0')}:${String(finMins % 60).padStart(2, '0')}`
   }
 
   if (citaCreada) {
@@ -169,18 +247,18 @@ export default function AgendarCita() {
                   <div className="spinner" style={{ margin: '20px auto' }} />
                 ) : (
                   <div className="horas-grid">
-                    {horariosDelDia.map(hora => {
-                      const disp = slotDisponible(hora)
-                      const esSel = horaSeleccionada === hora
+                    {horariosDelDia.map(slot => {
+                      const disp = slotDisponible(slot)
+                      const esSel = horaSeleccionada === slot
                       return (
                         <button
-                          key={hora}
-                          className={`hora-btn ${disp ? '' : 'ocupado'} ${esSel ? 'selected' : ''}`}
-                          onClick={() => disp && setHoraSeleccionada(hora)}
+                          key={slot}
+                          className={`hora-btn ${!disp ? 'ocupado' : ''} ${esSel ? 'selected' : ''}`}
+                          onClick={() => disp && setHoraSeleccionada(slot)}
                           disabled={!disp}
                         >
-                          {hora}
-                          {!disp && <span className="ocupado-tag">Ocupado</span>}
+                          {slot}
+                          {!disp && <span className="ocupado-tag">No disp.</span>}
                         </button>
                       )
                     })}
@@ -202,23 +280,12 @@ export default function AgendarCita() {
           </div>
         )}
 
-        {/* PASO 1: Kinesiólogo */}
+        {/* PASO 1: Kinesiólogo — sin opción "Sin preferencia", sin subtítulo */}
         {paso === 1 && (
           <div className="paso-container">
             <h2 className="paso-title">¿Con quién quieres atenderte?</h2>
-            <p className="paso-subtitle">Puedes dejar sin preferencia si no importa</p>
 
             <div className="kine-grid">
-              <button
-                className={`kine-card ${kineSeleccionado === null ? 'selected' : ''}`}
-                onClick={() => setKineSeleccionado(null)}
-              >
-                <div className="kine-avatar">?</div>
-                <div className="kine-info">
-                  <strong>Sin preferencia</strong>
-                  <span>El equipo asignará al profesional disponible</span>
-                </div>
-              </button>
               {kinesiólogos.map(k => (
                 <button
                   key={k.id}
@@ -228,7 +295,7 @@ export default function AgendarCita() {
                   <div className="kine-avatar">{k.nombre.charAt(0)}</div>
                   <div className="kine-info">
                     <strong>{k.nombre}</strong>
-                    <span>Kinesióloga</span>
+                    <span>Kinesióloga/o</span>
                   </div>
                 </button>
               ))}
@@ -236,7 +303,13 @@ export default function AgendarCita() {
 
             <div className="paso-nav">
               <button className="btn btn-secondary" onClick={() => setPaso(0)}>← Atrás</button>
-              <button className="btn btn-primary" onClick={() => setPaso(2)}>Continuar →</button>
+              <button
+                className="btn btn-primary"
+                disabled={!kineSeleccionado}
+                onClick={() => setPaso(2)}
+              >
+                Continuar →
+              </button>
             </div>
           </div>
         )}
@@ -245,7 +318,6 @@ export default function AgendarCita() {
         {paso === 2 && (
           <div className="paso-container">
             <h2 className="paso-title">Tus datos</h2>
-            <p className="paso-subtitle">Para confirmar y notificarte tu reserva</p>
 
             <div className="form-grid">
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -254,18 +326,26 @@ export default function AgendarCita() {
                   className="form-input"
                   placeholder="Ej: María González"
                   value={formPaciente.nombre}
-                  onChange={e => setFormPaciente(p => ({ ...p, nombre: e.target.value }))}
+                  onChange={handleNombreChange}
                 />
               </div>
-              <div className="form-group">
-                <label className="form-label">Teléfono WhatsApp * <span className="hint">Con código país, ej: 56912345678</span></label>
-                <input
-                  className="form-input"
-                  placeholder="56912345678"
-                  value={formPaciente.telefono}
-                  onChange={e => setFormPaciente(p => ({ ...p, telefono: e.target.value }))}
-                />
+
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">Teléfono *</label>
+                <div className="telefono-wrapper">
+                  <span className="telefono-prefix">+56</span>
+                  <input
+                    className="form-input telefono-input"
+                    placeholder="912345678"
+                    value={formPaciente.telefono}
+                    onChange={handleTelefonoChange}
+                    inputMode="numeric"
+                    maxLength={9}
+                  />
+                </div>
+                <span className="field-hint">9 dígitos, sin el 0 inicial. Ej: 912345678</span>
               </div>
+
               <div className="form-group">
                 <label className="form-label">RUT <span className="hint">Opcional</span></label>
                 <input
@@ -275,7 +355,8 @@ export default function AgendarCita() {
                   onChange={e => setFormPaciente(p => ({ ...p, rut: e.target.value }))}
                 />
               </div>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+
+              <div className="form-group">
                 <label className="form-label">Email <span className="hint">Opcional</span></label>
                 <input
                   className="form-input"
@@ -285,32 +366,13 @@ export default function AgendarCita() {
                   onChange={e => setFormPaciente(p => ({ ...p, email: e.target.value }))}
                 />
               </div>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label">Motivo de consulta <span className="hint">Opcional</span></label>
-                <textarea
-                  className="form-textarea"
-                  placeholder="Describe brevemente tu lesión o motivo de consulta..."
-                  value={formPaciente.motivo}
-                  onChange={e => setFormPaciente(p => ({ ...p, motivo: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            <div className="whatsapp-notice">
-              <span>📱</span>
-              <p>Recibirás una notificación por WhatsApp cuando tu cita sea confirmada. 
-                Necesitas tener activado el bot de CallMeBot — 
-                <a href="https://www.callmebot.com/blog/free-api-whatsapp-messages/" target="_blank" rel="noreferrer">
-                  ver instrucciones
-                </a>.
-              </p>
             </div>
 
             <div className="paso-nav">
               <button className="btn btn-secondary" onClick={() => setPaso(1)}>← Atrás</button>
               <button
                 className="btn btn-primary"
-                disabled={!formPaciente.nombre || !formPaciente.telefono}
+                disabled={!formPaciente.nombre || formPaciente.telefono.length !== 9}
                 onClick={() => setPaso(3)}
               >
                 Revisar →
@@ -319,7 +381,7 @@ export default function AgendarCita() {
           </div>
         )}
 
-        {/* PASO 3: Confirmación */}
+        {/* PASO 3: Confirmación — sin "Tipo de atención" */}
         {paso === 3 && (
           <div className="paso-container">
             <h2 className="paso-title">Revisa tu reserva</h2>
@@ -336,21 +398,14 @@ export default function AgendarCita() {
                 <span className="resumen-icon">🕐</span>
                 <div>
                   <strong>Hora</strong>
-                  <span>{horaSeleccionada} – {String(parseInt(horaSeleccionada) + 1).padStart(2, '0')}:00</span>
+                  <span>{horaSeleccionada} – {horaTermino(horaSeleccionada)}</span>
                 </div>
               </div>
               <div className="resumen-item">
                 <span className="resumen-icon">👩‍⚕️</span>
                 <div>
                   <strong>Profesional</strong>
-                  <span>{kineSeleccionado?.nombre || 'Sin preferencia'}</span>
-                </div>
-              </div>
-              <div className="resumen-item">
-                <span className="resumen-icon">🏥</span>
-                <div>
-                  <strong>Tipo de atención</strong>
-                  <span>El kinesiólogo lo definirá al confirmar</span>
+                  <span>{kineSeleccionado?.nombre}</span>
                 </div>
               </div>
               <hr className="resumen-hr" />
@@ -364,16 +419,25 @@ export default function AgendarCita() {
               <div className="resumen-item">
                 <span className="resumen-icon">📱</span>
                 <div>
-                  <strong>WhatsApp</strong>
-                  <span>+{formPaciente.telefono}</span>
+                  <strong>Teléfono</strong>
+                  <span>+56 {formPaciente.telefono}</span>
                 </div>
               </div>
-              {formPaciente.motivo && (
+              {formPaciente.rut && (
                 <div className="resumen-item">
-                  <span className="resumen-icon">📝</span>
+                  <span className="resumen-icon">🪪</span>
                   <div>
-                    <strong>Motivo</strong>
-                    <span>{formPaciente.motivo}</span>
+                    <strong>RUT</strong>
+                    <span>{formPaciente.rut}</span>
+                  </div>
+                </div>
+              )}
+              {formPaciente.email && (
+                <div className="resumen-item">
+                  <span className="resumen-icon">✉️</span>
+                  <div>
+                    <strong>Email</strong>
+                    <span>{formPaciente.email}</span>
                   </div>
                 </div>
               )}
@@ -398,16 +462,23 @@ export default function AgendarCita() {
 }
 
 function Exito({ cita, kine }) {
+  const horaTermino = (slot) => {
+    if (!slot) return ''
+    const [h, m] = slot.split(':').map(Number)
+    const finMins = h * 60 + m + 60
+    return `${String(Math.floor(finMins / 60)).padStart(2, '0')}:${String(finMins % 60).padStart(2, '0')}`
+  }
+
   return (
     <div className="exito-wrapper">
       <div className="exito-card">
         <div className="exito-icon">✓</div>
         <h2>¡Reserva enviada!</h2>
-        <p>Tu solicitud fue recibida correctamente. El equipo la revisará y recibirás una notificación por WhatsApp cuando sea confirmada.</p>
+        <p>Tu solicitud fue recibida. El equipo se pondrá en contacto contigo para confirmar tu hora.</p>
         <div className="exito-detalle">
           <p><strong>Fecha:</strong> {cita.fecha}</p>
-          <p><strong>Hora:</strong> {cita.hora_inicio}</p>
-          <p><strong>Profesional:</strong> {kine?.nombre || 'Sin preferencia indicada'}</p>
+          <p><strong>Hora:</strong> {cita.hora_inicio} – {horaTermino(cita.hora_inicio)}</p>
+          <p><strong>Profesional:</strong> {kine?.nombre}</p>
           <p><strong>Estado:</strong> <span className="badge badge-pendiente">Pendiente confirmación</span></p>
         </div>
         <button className="btn btn-outline" onClick={() => window.location.reload()}>
