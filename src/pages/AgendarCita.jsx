@@ -5,7 +5,7 @@ import {
   supabase,
   verificarDisponibilidad,
   agendarCita,
-  getKinesiólogos,
+  getKinesiologo,
 } from '../lib/supabase'
 import './AgendarCita.css'
 
@@ -82,7 +82,7 @@ export default function AgendarCita() {
     .slice(0, 14)
 
   useEffect(() => {
-    getKinesiólogos().then(setKinesiólogos).catch(console.error)
+    getKinesiologo().then(setKinesiólogos).catch(console.error)
   }, [])
 
   // Cargar ocupación Y bloqueos al cambiar fecha
