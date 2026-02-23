@@ -141,7 +141,7 @@ export default function PanelKine({ session }) {
           </button>
           <button className={`nav-item ${seccion === 'agenda' ? 'active' : ''}`}
             onClick={() => setSeccion('agenda')}>
-            <span>👥</span> Agenda Completa
+            <span>👥</span> Agenda Equipo
           </button>
           <button className={`nav-item ${seccion === 'bloqueos' ? 'active' : ''}`}
             onClick={() => setSeccion('bloqueos')}>
