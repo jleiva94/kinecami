@@ -105,9 +105,9 @@ export default function PanelKine({ session }) {
     }
   }
 
-  const citasFiltradas = citas.filter(c =>
-    filtroEstado === 'todos' || c.estado === filtroEstado
-  )
+  const citasFiltradas = citas
+    .filter(c => c.kinesiologo_id === perfil?.id)
+    .filter(c => filtroEstado === 'todos' || c.estado === filtroEstado)
 
   const diasSemana = vista === 'semana'
     ? eachDayOfInterval({
@@ -202,10 +202,10 @@ export default function PanelKine({ session }) {
 
             <div className="stats-row">
               {[
-                { label: 'Pendientes',  val: citas.filter(c => c.estado === 'pendiente').length,  color: 'var(--amber)' },
-                { label: 'Confirmadas', val: citas.filter(c => c.estado === 'confirmada').length, color: 'var(--sage-dark)' },
-                { label: 'Completadas', val: citas.filter(c => c.estado === 'completada').length, color: 'var(--indigo)' },
-                { label: 'Total',       val: citas.length,                                         color: 'var(--charcoal)' },
+                { label: 'Pendientes',  val: citasFiltradas.filter(c => c.estado === 'pendiente').length,  color: 'var(--amber)' },
+                { label: 'Confirmadas', val: citasFiltradas.filter(c => c.estado === 'confirmada').length, color: 'var(--sage-dark)' },
+                { label: 'Completadas', val: citasFiltradas.filter(c => c.estado === 'completada').length, color: 'var(--indigo)' },
+                { label: 'Total',       val: citasFiltradas.length,                                         color: 'var(--charcoal)' },
               ].map(s => (
                 <div key={s.label} className="stat-card">
                   <span className="stat-num" style={{ color: s.color }}>{s.val}</span>
