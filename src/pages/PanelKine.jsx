@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isToday, isSunday } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { supabase, getCitasRango, actualizarCita, ESTADOS, TIPOS_ATENCION } from '../lib/supabase'
+import { supabase, actualizarCita, ESTADOS, TIPOS_ATENCION } from '../lib/supabase'
 import GestionBloqueos from './GestionBloqueos'
 import './PanelKine.css'
 
@@ -11,8 +11,8 @@ const Toast = ({ msg, type, onClose }) => {
 }
 
 export default function PanelKine({ session }) {
-  const [vista, setVista] = useState('dia') // 'dia' | 'semana'
-  const [seccion, setSeccion] = useState('citas') // 'citas' | 'bloqueos'
+  const [vista, setVista] = useState('dia')
+  const [seccion, setSeccion] = useState('citas')
   const [fechaActual, setFechaActual] = useState(new Date())
   const [citas, setCitas] = useState([])
   const [cargando, setCargando] = useState(false)
@@ -21,10 +21,9 @@ export default function PanelKine({ session }) {
   const [perfil, setPerfil] = useState(null)
   const [filtroEstado, setFiltroEstado] = useState('todos')
 
-  // Obtener perfil del kinesiólogo
   useEffect(() => {
     supabase
-      .from('kinesiólogos')
+      .from('kinesiologo')
       .select('*')
       .eq('email', session.user.email)
       .single()
@@ -46,7 +45,7 @@ export default function PanelKine({ session }) {
 
       const { data, error } = await supabase
         .from('citas')
-        .select(`*, kinesiólogos(nombre)`)
+        .select('*, kinesiologo(nombre)')
         .gte('fecha', inicio)
         .lte('fecha', fin)
         .order('fecha')
@@ -63,13 +62,10 @@ export default function PanelKine({ session }) {
 
   useEffect(() => { cargarCitas() }, [cargarCitas])
 
-  // Suscripción realtime
   useEffect(() => {
     const channel = supabase
       .channel('citas-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'citas' }, () => {
-        cargarCitas()
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'citas' }, () => cargarCitas())
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [cargarCitas])
@@ -91,10 +87,9 @@ export default function PanelKine({ session }) {
     }
   }
 
-  const citasFiltradas = citas.filter(c => {
-    if (filtroEstado !== 'todos' && c.estado !== filtroEstado) return false
-    return true
-  })
+  const citasFiltradas = citas.filter(c =>
+    filtroEstado === 'todos' || c.estado === filtroEstado
+  )
 
   const diasSemana = vista === 'semana'
     ? eachDayOfInterval({
@@ -107,34 +102,27 @@ export default function PanelKine({ session }) {
     <div className="panel-wrapper">
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Sidebar */}
       <aside className="panel-sidebar">
         <div className="sidebar-logo">K</div>
         <div className="sidebar-perfil">
           <div className="sidebar-avatar">{perfil?.nombre?.charAt(0) || '?'}</div>
           <div>
             <strong>{perfil?.nombre || 'Cargando...'}</strong>
-            <span>Kinesióloga</span>
+            <span>Kinesióloga/o</span>
           </div>
         </div>
 
         <nav className="sidebar-nav">
-          <button
-            className={`nav-item ${seccion === 'citas' && vista === 'dia' ? 'active' : ''}`}
-            onClick={() => { setSeccion('citas'); setVista('dia') }}
-          >
+          <button className={`nav-item ${seccion === 'citas' && vista === 'dia' ? 'active' : ''}`}
+            onClick={() => { setSeccion('citas'); setVista('dia') }}>
             <span>📅</span> Vista Diaria
           </button>
-          <button
-            className={`nav-item ${seccion === 'citas' && vista === 'semana' ? 'active' : ''}`}
-            onClick={() => { setSeccion('citas'); setVista('semana') }}
-          >
+          <button className={`nav-item ${seccion === 'citas' && vista === 'semana' ? 'active' : ''}`}
+            onClick={() => { setSeccion('citas'); setVista('semana') }}>
             <span>📆</span> Vista Semanal
           </button>
-          <button
-            className={`nav-item ${seccion === 'bloqueos' ? 'active' : ''}`}
-            onClick={() => setSeccion('bloqueos')}
-          >
+          <button className={`nav-item ${seccion === 'bloqueos' ? 'active' : ''}`}
+            onClick={() => setSeccion('bloqueos')}>
             <span>🚫</span> Mis Bloqueos
           </button>
         </nav>
@@ -142,11 +130,9 @@ export default function PanelKine({ session }) {
         <div className="sidebar-filtros">
           <p className="sidebar-section-title">Filtrar por estado</p>
           {['todos', ...Object.keys(ESTADOS)].map(e => (
-            <button
-              key={e}
+            <button key={e}
               className={`filtro-btn ${filtroEstado === e ? 'active' : ''}`}
-              onClick={() => setFiltroEstado(e)}
-            >
+              onClick={() => setFiltroEstado(e)}>
               {e === 'todos' ? 'Todos' : ESTADOS[e].label}
             </button>
           ))}
@@ -155,109 +141,76 @@ export default function PanelKine({ session }) {
         <button className="sidebar-logout" onClick={handleLogout}>Cerrar sesión</button>
       </aside>
 
-      {/* Main */}
       <main className="panel-main">
-        {/* Vista de bloqueos */}
         {seccion === 'bloqueos' && perfil && (
           <GestionBloqueos perfil={perfil} onBack={() => setSeccion('citas')} />
         )}
 
-        {/* Vista de citas */}
-        {seccion === 'citas' && (<>
-        {/* Top bar */}
-        <div className="panel-topbar">
-          <div className="nav-fecha">
-            <button className="nav-fecha-btn" onClick={() => setFechaActual(d => vista === 'dia' ? subDays(d, 1) : subDays(d, 7))}>‹</button>
-            <h2 className="fecha-titulo">
-              {vista === 'dia'
-                ? format(fechaActual, "EEEE d 'de' MMMM, yyyy", { locale: es })
-                : `Semana del ${format(startOfWeek(fechaActual, { weekStartsOn: 1 }), "d 'de' MMMM", { locale: es })}`
-              }
-            </h2>
-            <button className="nav-fecha-btn" onClick={() => setFechaActual(d => vista === 'dia' ? addDays(d, 1) : addDays(d, 7))}>›</button>
-          </div>
-          <button className="btn btn-secondary btn-sm" onClick={() => setFechaActual(new Date())}>
-            Hoy
-          </button>
-        </div>
-
-        {/* Stats rápidas */}
-        <div className="stats-row">
-          {[
-            { label: 'Pendientes', val: citas.filter(c=>c.estado==='pendiente').length, color: 'var(--amber)' },
-            { label: 'Confirmadas', val: citas.filter(c=>c.estado==='confirmada').length, color: 'var(--sage-dark)' },
-            { label: 'Completadas', val: citas.filter(c=>c.estado==='completada').length, color: 'var(--indigo)' },
-            { label: 'Total', val: citas.length, color: 'var(--charcoal)' },
-          ].map(s => (
-            <div key={s.label} className="stat-card">
-              <span className="stat-num" style={{ color: s.color }}>{s.val}</span>
-              <span className="stat-label">{s.label}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Lista de citas */}
-        {cargando ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-            <div className="spinner" />
-          </div>
-        ) : (
+        {seccion === 'citas' && (
           <>
-            {vista === 'dia' && (
-              <CitasListaDia
-                citas={citasFiltradas}
-                fecha={fechaActual}
-                onVerDetalle={setCitaDetalle}
-              />
-            )}
-            {vista === 'semana' && (
-              <CitasSemana
-                citas={citasFiltradas}
-                dias={diasSemana}
-                onVerDetalle={setCitaDetalle}
-              />
-            )}
+            <div className="panel-topbar">
+              <div className="nav-fecha">
+                <button className="nav-fecha-btn" onClick={() => setFechaActual(d => vista === 'dia' ? subDays(d, 1) : subDays(d, 7))}>‹</button>
+                <h2 className="fecha-titulo">
+                  {vista === 'dia'
+                    ? format(fechaActual, "EEEE d 'de' MMMM, yyyy", { locale: es })
+                    : `Semana del ${format(startOfWeek(fechaActual, { weekStartsOn: 1 }), "d 'de' MMMM", { locale: es })}`}
+                </h2>
+                <button className="nav-fecha-btn" onClick={() => setFechaActual(d => vista === 'dia' ? addDays(d, 1) : addDays(d, 7))}>›</button>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => setFechaActual(new Date())}>Hoy</button>
+            </div>
+
+            <div className="stats-row">
+              {[
+                { label: 'Pendientes',  val: citas.filter(c => c.estado === 'pendiente').length,  color: 'var(--amber)' },
+                { label: 'Confirmadas', val: citas.filter(c => c.estado === 'confirmada').length, color: 'var(--sage-dark)' },
+                { label: 'Completadas', val: citas.filter(c => c.estado === 'completada').length, color: 'var(--indigo)' },
+                { label: 'Total',       val: citas.length,                                         color: 'var(--charcoal)' },
+              ].map(s => (
+                <div key={s.label} className="stat-card">
+                  <span className="stat-num" style={{ color: s.color }}>{s.val}</span>
+                  <span className="stat-label">{s.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {cargando
+              ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="spinner" /></div>
+              : vista === 'dia'
+                ? <CitasListaDia citas={citasFiltradas} onVerDetalle={setCitaDetalle} />
+                : <CitasSemana  citas={citasFiltradas} dias={diasSemana} onVerDetalle={setCitaDetalle} />
+            }
           </>
         )}
-        {/* fin seccion citas */}
-        </>)}
       </main>
 
-      {/* Modal detalle */}
       {citaDetalle && (
-        <ModalDetalle
-          cita={citaDetalle}
-          onClose={() => setCitaDetalle(null)}
-          onActualizar={actualizarEstado}
-        />
+        <ModalDetalle cita={citaDetalle} onClose={() => setCitaDetalle(null)} onActualizar={actualizarEstado} />
       )}
     </div>
   )
 }
 
-// ---- Componentes ----
+// ── Subcomponentes ───────────────────────────────────────────────────────────
 
-function CitasListaDia({ citas, fecha, onVerDetalle }) {
+function CitasListaDia({ citas, onVerDetalle }) {
   const horasConCitas = {}
   citas.forEach(c => {
     if (!horasConCitas[c.hora_inicio]) horasConCitas[c.hora_inicio] = []
     horasConCitas[c.hora_inicio].push(c)
   })
 
-  const horas = Object.keys(horasConCitas).sort()
-
-  if (citas.length === 0) {
-    return (
-      <div className="empty-state">
-        <div className="empty-icon">📋</div>
-        <p>No hay citas para este día</p>
-      </div>
-    )
-  }
+  if (citas.length === 0) return (
+    <div className="empty-state">
+      <div className="empty-icon">📋</div>
+      <p>No hay citas para este día</p>
+    </div>
+  )
 
   return (
     <div className="citas-dia">
-      {horas.map(hora => (
+      {Object.keys(horasConCitas).sort().map(hora => (
         <div key={hora} className="hora-bloque">
           <div className="hora-label">{hora.substring(0, 5)}</div>
           <div className="hora-citas">
@@ -307,7 +260,7 @@ function CitaCard({ cita, compact, onClick }) {
       <div className="cita-nombre">{cita.paciente_nombre}</div>
       {!compact && (
         <div className="cita-meta">
-          {cita.kinesiólogos?.nombre && <span>👩‍⚕️ {cita.kinesiólogos.nombre}</span>}
+          {cita.kinesiologo?.nombre && <span>👩‍⚕️ {cita.kinesiologo.nombre}</span>}
           {cita.tipo_atencion && <span>{TIPOS_ATENCION[cita.tipo_atencion]?.icon} {TIPOS_ATENCION[cita.tipo_atencion]?.label}</span>}
         </div>
       )}
@@ -322,34 +275,35 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
 
   const handleAccion = async (nuevoEstado) => {
     setProcesando(true)
-    await onActualizar(cita, nuevoEstado, {
-      notas_kinesiologo: notas || null,
-      tipo_atencion: tipoAtencion || null
-    })
+    await onActualizar(cita, nuevoEstado, { notas_kinesiologo: notas || null, tipo_atencion: tipoAtencion || null })
     setProcesando(false)
   }
 
-  // Genera link de WhatsApp con mensaje pre-escrito según contexto
+  const calcHoraFin = (horaInicio) => {
+    if (!horaInicio) return ''
+    const [h, m] = horaInicio.split(':').map(Number)
+    const fin = h * 60 + m + 60
+    return `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}`
+  }
+
   const whatsappLink = (tipo) => {
     const num = cita.paciente_telefono?.replace(/[^0-9]/g, '')
     if (!num) return '#'
     const fecha = format(new Date(cita.fecha + 'T12:00:00'), "EEEE d 'de' MMMM", { locale: es })
     const hora = cita.hora_inicio?.substring(0, 5)
-    const horaFin = String(parseInt(cita.hora_inicio) + 1).padStart(2, '0') + ':00'
+    const horaFin = calcHoraFin(cita.hora_inicio)
     const tipoLabel = tipoAtencion ? TIPOS_ATENCION[tipoAtencion]?.label : ''
-
     let msg = ''
-    if (tipo === 'confirmar') {
+    if (tipo === 'confirmar')
       msg = `Hola ${cita.paciente_nombre} 👋, te confirmo tu cita de kinesiología para el ${fecha} entre las ${hora} y ${horaFin} hrs.${tipoLabel ? ` Tu atención será en: ${tipoLabel}.` : ''} ¡Te esperamos! 🌿`
-    } else if (tipo === 'rechazar') {
-      msg = `Hola ${cita.paciente_nombre}, lamentablemente no podemos confirmar tu solicitud para el ${fecha} a las ${hora} hrs. Te pido disculpas, puedes agendar nuevamente en otro horario disponible.`
-    } else if (tipo === 'recordatorio') {
+    else if (tipo === 'rechazar')
+      msg = `Hola ${cita.paciente_nombre}, lamentablemente no podemos confirmar tu solicitud para el ${fecha} a las ${hora} hrs. Puedes agendar en otro horario disponible.`
+    else if (tipo === 'recordatorio')
       msg = `Hola ${cita.paciente_nombre} 👋, te recuerdo tu cita de kinesiología mañana ${fecha} a las ${hora} hrs. ¡Hasta entonces! 🌿`
-    } else if (tipo === 'completada') {
-      msg = `Hola ${cita.paciente_nombre}, fue un gusto atenderte hoy. Recuerda seguir las indicaciones de tu tratamiento. ¡Cualquier consulta me avisas! 💪`
-    } else {
+    else if (tipo === 'completada')
+      msg = `Hola ${cita.paciente_nombre}, fue un gusto atenderte hoy. Recuerda seguir las indicaciones. ¡Cualquier consulta me avisas! 💪`
+    else
       msg = `Hola ${cita.paciente_nombre}, te contacto por tu cita del ${fecha} a las ${hora} hrs.`
-    }
     return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
   }
 
@@ -362,7 +316,6 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
         </div>
 
         <div className="modal-body">
-          {/* Info principal */}
           <div className="detalle-grid">
             <div className="detalle-item">
               <span className="detalle-label">Paciente</span>
@@ -374,64 +327,33 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
             </div>
             <div className="detalle-item">
               <span className="detalle-label">Fecha y Hora</span>
-              <strong>{cita.fecha} — {cita.hora_inicio?.substring(0,5)} a {String(parseInt(cita.hora_inicio)+1).padStart(2,'0')}:00</strong>
+              <strong>{cita.fecha} — {cita.hora_inicio?.substring(0,5)} a {calcHoraFin(cita.hora_inicio)}</strong>
             </div>
             <div className="detalle-item">
               <span className="detalle-label">Teléfono</span>
               <span>+{cita.paciente_telefono}</span>
             </div>
-            {cita.paciente_email && (
-              <div className="detalle-item">
-                <span className="detalle-label">Email</span>
-                <span>{cita.paciente_email}</span>
-              </div>
-            )}
-            {cita.paciente_rut && (
-              <div className="detalle-item">
-                <span className="detalle-label">RUT</span>
-                <span>{cita.paciente_rut}</span>
-              </div>
-            )}
-            {cita.motivo_consulta && (
-              <div className="detalle-item full">
-                <span className="detalle-label">Motivo de consulta</span>
-                <p>{cita.motivo_consulta}</p>
-              </div>
-            )}
+            {cita.paciente_email && <div className="detalle-item"><span className="detalle-label">Email</span><span>{cita.paciente_email}</span></div>}
+            {cita.paciente_rut   && <div className="detalle-item"><span className="detalle-label">RUT</span><span>{cita.paciente_rut}</span></div>}
+            {cita.motivo_consulta && <div className="detalle-item full"><span className="detalle-label">Motivo</span><p>{cita.motivo_consulta}</p></div>}
           </div>
 
-          {/* Botones WhatsApp con mensajes pre-escritos */}
           <div className="whatsapp-section">
             <p className="whatsapp-section-title">📱 Contactar por WhatsApp</p>
             <div className="whatsapp-btns">
-              {cita.estado === 'pendiente' && (
-                <>
-                  <a className="btn-wa btn-wa-confirm" href={whatsappLink('confirmar')} target="_blank" rel="noreferrer">
-                    ✅ Enviar confirmación
-                  </a>
-                  <a className="btn-wa btn-wa-reject" href={whatsappLink('rechazar')} target="_blank" rel="noreferrer">
-                    ❌ Enviar rechazo
-                  </a>
-                </>
-              )}
-              {cita.estado === 'confirmada' && (
-                <>
-                  <a className="btn-wa btn-wa-reminder" href={whatsappLink('recordatorio')} target="_blank" rel="noreferrer">
-                    🔔 Enviar recordatorio
-                  </a>
-                  <a className="btn-wa btn-wa-complete" href={whatsappLink('completada')} target="_blank" rel="noreferrer">
-                    🎉 Mensaje post-sesión
-                  </a>
-                </>
-              )}
-              <a className="btn-wa btn-wa-free" href={whatsappLink('libre')} target="_blank" rel="noreferrer">
-                💬 Abrir chat (mensaje libre)
-              </a>
+              {cita.estado === 'pendiente' && (<>
+                <a className="btn-wa btn-wa-confirm" href={whatsappLink('confirmar')} target="_blank" rel="noreferrer">✅ Enviar confirmación</a>
+                <a className="btn-wa btn-wa-reject"  href={whatsappLink('rechazar')}  target="_blank" rel="noreferrer">❌ Enviar rechazo</a>
+              </>)}
+              {cita.estado === 'confirmada' && (<>
+                <a className="btn-wa btn-wa-reminder" href={whatsappLink('recordatorio')} target="_blank" rel="noreferrer">🔔 Enviar recordatorio</a>
+                <a className="btn-wa btn-wa-complete" href={whatsappLink('completada')}   target="_blank" rel="noreferrer">🎉 Mensaje post-sesión</a>
+              </>)}
+              <a className="btn-wa btn-wa-free" href={whatsappLink('libre')} target="_blank" rel="noreferrer">💬 Abrir chat (mensaje libre)</a>
             </div>
-            <p className="whatsapp-hint">Se abrirá WhatsApp con el mensaje listo para enviar. Puedes editarlo antes.</p>
+            <p className="whatsapp-hint">Se abrirá WhatsApp con el mensaje listo. Puedes editarlo antes de enviar.</p>
           </div>
 
-          {/* Tipo de atención */}
           <div className="form-group">
             <label className="form-label">Tipo de atención</label>
             <select className="form-select" value={tipoAtencion} onChange={e => setTipoAtencion(e.target.value)}>
@@ -441,46 +363,26 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
             </select>
           </div>
 
-          {/* Notas */}
           <div className="form-group">
             <label className="form-label">Notas / Observaciones internas</label>
-            <textarea
-              className="form-textarea"
+            <textarea className="form-textarea" rows={3}
               placeholder="Observaciones clínicas, indicaciones, motivo de rechazo..."
-              value={notas}
-              onChange={e => setNotas(e.target.value)}
-              rows={3}
-            />
+              value={notas} onChange={e => setNotas(e.target.value)} />
           </div>
         </div>
 
-        {/* Acciones de estado */}
         <div className="modal-acciones">
           <p className="acciones-label">Actualizar estado en el sistema:</p>
-          {cita.estado === 'pendiente' && (
-            <>
-              <button className="btn btn-primary" onClick={() => handleAccion('confirmada')} disabled={procesando}>
-                ✓ Marcar como confirmada
-              </button>
-              <button className="btn btn-danger" onClick={() => handleAccion('rechazada')} disabled={procesando}>
-                ✕ Marcar como rechazada
-              </button>
-            </>
-          )}
-          {cita.estado === 'confirmada' && (
-            <>
-              <button className="btn btn-primary" onClick={() => handleAccion('completada')} disabled={procesando}>
-                ✓ Marcar completada
-              </button>
-              <button className="btn btn-danger" onClick={() => handleAccion('cancelada')} disabled={procesando}>
-                Cancelar cita
-              </button>
-            </>
-          )}
-          {(cita.estado === 'completada' || cita.estado === 'rechazada' || cita.estado === 'cancelada') && (
-            <button className="btn btn-secondary" onClick={() => handleAccion(cita.estado)} disabled={procesando}>
-              💾 Guardar notas
-            </button>
+          {cita.estado === 'pendiente' && (<>
+            <button className="btn btn-primary" onClick={() => handleAccion('confirmada')} disabled={procesando}>✓ Marcar como confirmada</button>
+            <button className="btn btn-danger"  onClick={() => handleAccion('rechazada')}  disabled={procesando}>✕ Marcar como rechazada</button>
+          </>)}
+          {cita.estado === 'confirmada' && (<>
+            <button className="btn btn-primary" onClick={() => handleAccion('completada')} disabled={procesando}>✓ Marcar completada</button>
+            <button className="btn btn-danger"  onClick={() => handleAccion('cancelada')}  disabled={procesando}>Cancelar cita</button>
+          </>)}
+          {['completada','rechazada','cancelada'].includes(cita.estado) && (
+            <button className="btn btn-secondary" onClick={() => handleAccion(cita.estado)} disabled={procesando}>💾 Guardar notas</button>
           )}
         </div>
       </div>
