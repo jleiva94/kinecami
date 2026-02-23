@@ -3,6 +3,7 @@ import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, is
 import { es } from 'date-fns/locale'
 import { supabase, actualizarCita, ESTADOS, TIPOS_ATENCION } from '../lib/supabase'
 import GestionBloqueos from './GestionBloqueos'
+import HistorialPacientes from './HistorialPacientes'
 import './PanelKine.css'
 
 const Toast = ({ msg, type, onClose }) => {
@@ -132,7 +133,11 @@ export default function PanelKine({ session }) {
           </button>
           <button className={`nav-item ${seccion === 'agenda' ? 'active' : ''}`}
             onClick={() => setSeccion('agenda')}>
-            <span>👥</span> Agenda Equipo
+            <span>👥</span> Agenda Completa
+          </button>
+          <button className={`nav-item ${seccion === 'historial' ? 'active' : ''}`}
+            onClick={() => setSeccion('historial')}>
+            <span>🗂️</span> Historial Pacientes
           </button>
           <button className={`nav-item ${seccion === 'bloqueos' ? 'active' : ''}`}
             onClick={() => setSeccion('bloqueos')}>
@@ -157,6 +162,10 @@ export default function PanelKine({ session }) {
       <main className="panel-main">
         {seccion === 'bloqueos' && perfil && (
           <GestionBloqueos perfil={perfil} onBack={() => setSeccion('citas')} />
+        )}
+
+        {seccion === 'historial' && (
+          <HistorialPacientes />
         )}
 
         {seccion === 'agenda' && (
