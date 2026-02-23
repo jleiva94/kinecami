@@ -345,10 +345,18 @@ function ModalDetalle({ cita, onClose, onActualizar }) {
                 <a className="btn-wa btn-wa-confirm" href={whatsappLink('confirmar')} target="_blank" rel="noreferrer">✅ Enviar confirmación</a>
                 <a className="btn-wa btn-wa-reject"  href={whatsappLink('rechazar')}  target="_blank" rel="noreferrer">❌ Enviar rechazo</a>
               </>)}
-              {cita.estado === 'confirmada' && (<>
-                <a className="btn-wa btn-wa-reminder" href={whatsappLink('recordatorio')} target="_blank" rel="noreferrer">🔔 Enviar recordatorio</a>
-                <a className="btn-wa btn-wa-complete" href={whatsappLink('completada')}   target="_blank" rel="noreferrer">🎉 Mensaje post-sesión</a>
-              </>)}
+              {cita.estado === 'confirmada' && (() => {
+                const ahora = new Date()
+                const citaFechaHora = new Date(`${cita.fecha}T${cita.hora_inicio}`)
+                const diffMins = (citaFechaHora - ahora) / 60000
+                const mostrarRecordatorio = diffMins <= 120 && diffMins > 0
+                return (<>
+                  {mostrarRecordatorio && (
+                    <a className="btn-wa btn-wa-reminder" href={whatsappLink('recordatorio')} target="_blank" rel="noreferrer">🔔 Enviar recordatorio</a>
+                  )}
+                  <a className="btn-wa btn-wa-complete" href={whatsappLink('completada')} target="_blank" rel="noreferrer">🎉 Mensaje post-sesión</a>
+                </>)
+              })()}
               <a className="btn-wa btn-wa-free" href={whatsappLink('libre')} target="_blank" rel="noreferrer">💬 Abrir chat (mensaje libre)</a>
             </div>
             <p className="whatsapp-hint">Se abrirá WhatsApp con el mensaje listo. Puedes editarlo antes de enviar.</p>
