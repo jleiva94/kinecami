@@ -14,7 +14,7 @@ CREATE TABLE kinesiólogos (
 -- Insertar los 2 kinesiólogos iniciales
 -- (La contraseña la manejas desde Supabase Auth)
 INSERT INTO kinesiólogos (nombre, email) VALUES
-  ('Camila Sepúlveda', 'camila@clinica.cl'),
+  ('Camila Sepúlveda', 'kinesiologacamilasepulveda@gmail.com'),
   ('Kinesiólogo 2', 'kine2@clinica.cl');
 
 -- Tabla de citas
