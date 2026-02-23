@@ -347,6 +347,50 @@
   padding-top: 8px;
 }
 
+.telefono-wrapper {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--light-gray);
+  border-radius: var(--radius);
+  background: white;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.telefono-wrapper:focus-within {
+  border-color: var(--sage-dark);
+  box-shadow: 0 0 0 3px var(--sage-light);
+}
+
+.telefono-prefix {
+  padding: 12px 14px;
+  background: var(--cream);
+  border-right: 1.5px solid var(--light-gray);
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--charcoal);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.telefono-input {
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  flex: 1;
+}
+
+.telefono-input:focus {
+  outline: none;
+  box-shadow: none !important;
+}
+
+.field-hint {
+  font-size: 0.78rem;
+  color: var(--mid-gray);
+  margin-top: 4px;
+}
+
 /* Éxito */
 .exito-wrapper {
   min-height: 100vh;
