@@ -76,10 +76,28 @@ export default function AgendarCita() {
   const ahora = new Date()
   const hoy = startOfToday()
 
-  // Próximos 14 días hábiles (sin domingos)
-  const diasDisponibles = Array.from({ length: 20 }, (_, i) => addDays(hoy, i))
-    .filter(d => !isSunday(d))
+  // Función que verifica si un día tiene al menos un slot disponible con 4h de anticipación
+  const diaHorasDisponibles = (dia) => {
+    const fechaStr = format(dia, 'yyyy-MM-dd')
+    const slots = getHorarios(fechaStr)
+    if (slots.length === 0) return false
+    const esHoy = fechaStr === format(ahora, 'yyyy-MM-dd')
+    if (!esHoy) return true // días futuros siempre tienen slots potencialmente disponibles
+    const ahoraMins = ahora.getHours() * 60 + ahora.getMinutes()
+    return slots.some(slot => toMins(slot) - ahoraMins >= 4 * 60)
+  }
+
+  // Próximos 14 días hábiles (sin domingos, sin días sin slots disponibles)
+  const diasDisponibles = Array.from({ length: 30 }, (_, i) => addDays(hoy, i))
+    .filter(d => !isSunday(d) && diaHorasDisponibles(d))
     .slice(0, 14)
+
+  // Auto-seleccionar el primer día disponible al montar
+  useEffect(() => {
+    if (diasDisponibles.length > 0 && !fechaSeleccionada) {
+      setFechaSeleccionada(diasDisponibles[0])
+    }
+  }, []) // eslint-disable-line
 
   useEffect(() => {
     getKinesiologo().then(setKinesiólogos).catch(console.error)
@@ -235,9 +253,9 @@ export default function AgendarCita() {
       {/* Header */}
       <header className="agendar-header">
         <div className="header-inner">
-          <div className="logo-mark">KS</div>
+          <div className="logo-mark">K</div>
           <div>
-            <h1 className="clinic-name">KineStrong</h1>
+            <h1 className="clinic-name">Clínica de Kinesiología</h1>
             <p className="clinic-sub">Reserva tu hora en línea</p>
           </div>
         </div>
@@ -288,21 +306,26 @@ export default function AgendarCita() {
                   <div className="spinner" style={{ margin: '20px auto' }} />
                 ) : (
                   <div className="horas-grid">
-                    {horariosDelDia.map(slot => {
-                      const disp = slotDisponible(slot)
-                      const esSel = horaSeleccionada === slot
-                      return (
-                        <button
-                          key={slot}
-                          className={`hora-btn ${!disp ? 'ocupado' : ''} ${esSel ? 'selected' : ''}`}
-                          onClick={() => disp && setHoraSeleccionada(slot)}
-                          disabled={!disp}
-                        >
-                          {slot}
-                          {!disp && <span className="ocupado-tag">No disp.</span>}
-                        </button>
-                      )
-                    })}
+                    {horariosDelDia
+                      .filter(slot => slotDisponible(slot))
+                      .map(slot => {
+                        const esSel = horaSeleccionada === slot
+                        return (
+                          <button
+                            key={slot}
+                            className={`hora-btn ${esSel ? 'selected' : ''}`}
+                            onClick={() => setHoraSeleccionada(slot)}
+                          >
+                            {slot}
+                          </button>
+                        )
+                      })
+                    }
+                    {horariosDelDia.filter(slot => slotDisponible(slot)).length === 0 && (
+                      <p style={{ color: 'var(--mid-gray)', fontSize: '0.9rem', gridColumn: '1/-1' }}>
+                        No hay horarios disponibles para este día.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
