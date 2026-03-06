@@ -110,11 +110,11 @@ export default function AgendarCita() {
     const fechaStr = format(fechaSeleccionada, 'yyyy-MM-dd')
 
     Promise.all([
+      // Usar vista "disponibilidad" — no expone datos personales
       supabase
-        .from('citas')
-        .select('hora_inicio, estado')
-        .eq('fecha', fechaStr)
-        .not('estado', 'in', '("rechazada","cancelada")'),
+        .from('disponibilidad')
+        .select('hora_inicio')
+        .eq('fecha', fechaStr),
       supabase
         .from('bloqueos')
         .select('kinesiologo_id, tipo, hora_inicio, hora_fin')
@@ -253,9 +253,9 @@ export default function AgendarCita() {
       {/* Header */}
       <header className="agendar-header">
         <div className="header-inner">
-          <div className="logo-mark">KS</div>
+          <div className="logo-mark">K</div>
           <div>
-            <h1 className="clinic-name">KineStrong</h1>
+            <h1 className="clinic-name">Clínica de Kinesiología</h1>
             <p className="clinic-sub">Reserva tu hora en línea</p>
           </div>
         </div>
