@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 
 // ⚠️  REEMPLAZA estos valores con los de tu proyecto en Supabase
 // Los encuentras en: Project Settings → API
-const SUPABASE_URL = 'https://TU_PROJECT_ID.supabase.co'
-const SUPABASE_ANON_KEY = 'TU_ANON_KEY'
+const SUPABASE_URL = 'ehfitzhgiqmilcwtqzfm.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_VyhyEBwupFjwmJMVA8e9fA_Rkq3TaDD'
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
