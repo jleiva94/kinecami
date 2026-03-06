@@ -2,19 +2,18 @@ import { createClient } from '@supabase/supabase-js'
 
 // ⚠️  REEMPLAZA estos valores con los de tu proyecto en Supabase
 // Los encuentras en: Project Settings → API
-const SUPABASE_URL = 'https://ehfitzhgiqmilcwtqzfm.supabase.co'
-const SUPABASE_ANON_KEY = 'sb_publishable_VyhyEBwupFjwmJMVA8e9fA_Rkq3TaDD'
+const SUPABASE_URL = 'https://TU_PROJECT_ID.supabase.co'
+const SUPABASE_ANON_KEY = 'TU_ANON_KEY'
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-// Verificar disponibilidad de un slot
+// Verificar disponibilidad de un slot (usa vista pública, sin datos personales)
 export const verificarDisponibilidad = async (fecha, hora) => {
   const { data, error } = await supabase
-    .from('citas')
-    .select('tipo_atencion, estado')
+    .from('disponibilidad')
+    .select('id')
     .eq('fecha', fecha)
     .eq('hora_inicio', hora)
-    .not('estado', 'in', '("rechazada","cancelada")')
 
   if (error) throw error
   const disponible = data.length < 2
